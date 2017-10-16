@@ -7,6 +7,7 @@ import java.util.*;
  * TupleDesc describes the schema of a tuple.
  */
 public class TupleDesc implements Serializable {
+    private TreeMap<Integer, TDItem> tdItemTreeMap;
 
     /**
      * A help class to facilitate organizing the information of each field
@@ -30,6 +31,30 @@ public class TupleDesc implements Serializable {
             this.fieldType = t;
         }
 
+        public boolean equals(Object o) {
+            if (o == null) {
+                return false;
+            }
+
+            if (!(o instanceof TDItem)) {
+                return false;
+            }
+
+            TDItem aItem = (TDItem)o;
+
+            if (aItem.fieldType != this.fieldType) {
+                return false;
+            }
+
+            if (aItem.fieldName == null && this.fieldName == null) {
+                return true;
+            } else if (aItem.fieldName == null || this.fieldName == null) {
+                return false;
+            } else {
+                return aItem.fieldName.equals(this.fieldName);
+            }
+        }
+
         public String toString() {
             return fieldName + "(" + fieldType + ")";
         }
@@ -41,11 +66,18 @@ public class TupleDesc implements Serializable {
      *        that are included in this TupleDesc
      * */
     public Iterator<TDItem> iterator() {
-        // some code goes here
-        return null;
+        
+        return tdItemTreeMap.values().iterator();
     }
 
     private static final long serialVersionUID = 1L;
+
+    /**
+     * Create a new TupleDesc with zero field type/name.
+     */
+    public TupleDesc() {
+        tdItemTreeMap = new TreeMap<Integer, TDItem>();
+    }
 
     /**
      * Create a new TupleDesc with typeAr.length fields with fields of the
@@ -59,7 +91,17 @@ public class TupleDesc implements Serializable {
      *            be null.
      */
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
-        // some code goes here
+        
+        tdItemTreeMap = new TreeMap<Integer, TDItem>();
+
+        // Shouldn't have a schema with 0 type
+        assert (typeAr.length > 0);
+        // Should have the same number of column types and column names.
+        assert (typeAr.length == fieldAr.length);
+
+        for (int i = 0; i < typeAr.length; i++) {
+            tdItemTreeMap.put(i, new TDItem(typeAr[i], fieldAr[i]));
+        }
     }
 
     /**
@@ -71,15 +113,56 @@ public class TupleDesc implements Serializable {
      *            TupleDesc. It must contain at least one entry.
      */
     public TupleDesc(Type[] typeAr) {
-        // some code goes here
+        
+        // Shouldn't have a schema with 0 type
+        tdItemTreeMap = new TreeMap<Integer, TDItem>();
+
+        assert (typeAr.length > 0);
+
+        for (int i = 0; i < typeAr.length; i++) {
+            tdItemTreeMap.put(i, new TDItem(typeAr[i], null));
+        }
+    }
+
+    /**
+     * Add a filed to TupleDesc by passing in its filed type and filed name.
+     * @param filedType
+     *                  type of field.
+     * @param filedName
+     *                  name of field, could be null.
+     */
+    public void addField(Type filedType, String filedName) {
+        if (tdItemTreeMap == null) {
+            tdItemTreeMap = new TreeMap<Integer, TDItem>();
+        }
+
+        Integer key = tdItemTreeMap.lastKey() + 1;
+        tdItemTreeMap.put(key, new TDItem(filedType, filedName));
+    }
+
+    /**
+     * Add a filed to TupleDesc by passing in a TDItem.
+     * @param item
+     *            a TDItem
+     */
+    public void addField(TDItem item) {
+        if (tdItemTreeMap == null) {
+            tdItemTreeMap = new TreeMap<Integer, TDItem>();
+        }
+
+        if (tdItemTreeMap.size() == 0) {
+            tdItemTreeMap.put(0, item);
+        } else {
+            Integer key = tdItemTreeMap.lastKey() + 1;
+            tdItemTreeMap.put(key, item);
+        }
     }
 
     /**
      * @return the number of fields in this TupleDesc
      */
     public int numFields() {
-        // some code goes here
-        return 0;
+        return tdItemTreeMap.size();
     }
 
     /**
@@ -92,8 +175,11 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public String getFieldName(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        
+        if (!tdItemTreeMap.containsKey(i)) {
+            throw new NoSuchElementException(String.format("index %d out of bound", i));
+        }
+        return tdItemTreeMap.get(i).fieldName;
     }
 
     /**
@@ -107,8 +193,11 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public Type getFieldType(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        
+        if (!tdItemTreeMap.containsKey(i)) {
+            throw new NoSuchElementException(String.format("index %d out of bound", i));
+        }
+        return tdItemTreeMap.get(i).fieldType;
     }
 
     /**
@@ -121,8 +210,14 @@ public class TupleDesc implements Serializable {
      *             if no field with a matching name is found.
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
-        // some code goes here
-        return 0;
+        
+        for (Map.Entry<Integer, TDItem> entry : tdItemTreeMap.entrySet()) {
+            if (entry.getValue().fieldName != null &&
+                    entry.getValue().fieldName.equals(name)) {
+                return entry.getKey();
+            }
+        }
+        throw new NoSuchElementException("No such field name in records");
     }
 
     /**
@@ -130,8 +225,21 @@ public class TupleDesc implements Serializable {
      *         Note that tuples from a given TupleDesc are of a fixed size.
      */
     public int getSize() {
-        // some code goes here
-        return 0;
+        
+        Iterator<TDItem> iterator = this.iterator();
+        int ret = 0;
+        while (iterator.hasNext()) {
+            TDItem item = iterator.next();
+            ret += item.fieldType.getLen();
+        }
+        return ret;
+    }
+
+    /**
+     * @return TreeMap of TDItems.
+     */
+    public TreeMap<Integer, TDItem> getTdItemTreeMap() {
+        return tdItemTreeMap;
     }
 
     /**
@@ -145,8 +253,20 @@ public class TupleDesc implements Serializable {
      * @return the new TupleDesc
      */
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
-        // some code goes here
-        return null;
+        
+        TupleDesc tupleDesc = new TupleDesc();
+        Iterator<TDItem> iteratorOfTD1 = td1.iterator();
+        while (iteratorOfTD1.hasNext()) {
+            TDItem item = iteratorOfTD1.next();
+            tupleDesc.addField(item);
+        }
+
+        Iterator<TDItem> iteratorOfTD2 = td2.iterator();
+        while (iteratorOfTD2.hasNext()) {
+            TDItem item = iteratorOfTD2.next();
+            tupleDesc.addField(item);
+        }
+        return tupleDesc;
     }
 
     /**
@@ -161,8 +281,17 @@ public class TupleDesc implements Serializable {
      */
 
     public boolean equals(Object o) {
-        // some code goes here
-        return false;
+        // null doesn't equal to anything
+        if (o == null) {
+            return false;
+        }
+
+        if (o.getClass() != TupleDesc.class) {
+            return false;
+        }
+        TreeMap map = ((TupleDesc) o).getTdItemTreeMap();
+
+        return tdItemTreeMap.equals(map);
     }
 
     public int hashCode() {
@@ -179,7 +308,15 @@ public class TupleDesc implements Serializable {
      * @return String describing this descriptor.
      */
     public String toString() {
-        // some code goes here
-        return "";
+        Iterator<TDItem> iterator = this.iterator();
+        StringBuilder builder = new StringBuilder();
+        while (iterator.hasNext()) {
+            TDItem item = iterator.next();
+            builder.append(item.fieldType);
+            builder.append("(");
+            builder.append(item.fieldName);
+            builder.append("),");
+        }
+        return builder.toString();
     }
 }

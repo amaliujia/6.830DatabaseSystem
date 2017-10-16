@@ -1,5 +1,7 @@
 package simpledb;
 
+import org.apache.log4j.Logger;
+
 import java.util.*;
 import java.io.*;
 
@@ -12,6 +14,7 @@ import java.io.*;
  *
  */
 public class HeapPage implements Page {
+    private static Logger LOG = Logger.getLogger(HeapPage.class);
 
     final HeapPageId pid;
     final TupleDesc td;
@@ -55,6 +58,7 @@ public class HeapPage implements Page {
             for (int i=0; i<tuples.length; i++)
                 tuples[i] = readNextTuple(dis,i);
         }catch(NoSuchElementException e){
+            LOG.error("NoSuchElementException", e);
             e.printStackTrace();
         }
         dis.close();
@@ -67,7 +71,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
+        return (int)Math.floor((BufferPool.getPageSize() * 8.0) / (this.td.getSize() * 8 + 1));
 
     }
 
@@ -78,8 +82,9 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
-                 
+        // _tuples per page_ = floor((_page size_ * 8) / (_tuple size_ * 8 + 1))
+        return (int)Math.ceil(getNumTuples() / 8.0);
+
     }
     
     /** Return a view of this page before it was modified
@@ -112,7 +117,7 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        return this.pid;
     }
 
     /**
@@ -142,6 +147,7 @@ public class HeapPage implements Page {
                 t.setField(j, f);
             }
         } catch (java.text.ParseException e) {
+            LOG.error(e);
             e.printStackTrace();
             throw new NoSuchElementException("parsing error!");
         }
@@ -281,16 +287,49 @@ public class HeapPage implements Page {
      * Returns the number of empty slots on this page.
      */
     public int getNumEmptySlots() {
-        // some code goes here
-        return 0;
+        int count = 0;
+        for (int i = 0; i < header.length; i++) {
+            int bytePresentCount = 0;
+            int headerByte = header[i];
+            if (headerByte < 0) {
+                bytePresentCount++;
+                headerByte += 1 << (8 - 1);
+            }
+            for (; headerByte != 0; headerByte = headerByte >> 1) {
+                if (headerByte % 2 == 1)
+                    bytePresentCount++;
+            }
+            count += (8 - bytePresentCount);
+        }
+        return count;
     }
 
     /**
      * Returns true if associated slot on this page is filled.
      */
     public boolean isSlotUsed(int i) {
-        // some code goes here
-        return false;
+        if (i >= numSlots) {
+            return false;
+        }
+
+        int index = i / 8;
+        int off = i % 8;
+
+        byte target = header[index];
+
+        if ((target & (1L << off)) != 0) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public Tuple getTuple(int i) {
+        if (i >= this.numSlots) {
+            throw new NoSuchElementException("Not tuple " + i);
+        }
+
+        return this.tuples[i];
     }
 
     /**
@@ -307,8 +346,53 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        return new HeapPageIterator(this);
     }
 
+    /**
+     * This is not thread safe.
+     */
+    private static class HeapPageIterator implements Iterator<Tuple> {
+        private HeapPage page;
+        private int numSlots;
+        private int index;
+
+        public HeapPageIterator(HeapPage page) {
+            this.page = page;
+            this.numSlots = page.getNumTuples();
+            index = 0;
+            fetchNext();
+        }
+
+        private void fetchNext() {
+            while (index < numSlots && !page.isSlotUsed(index)) {
+                index++;
+            }
+        }
+        public boolean hasNext() {
+            if (page.isSlotUsed(index)) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        public Tuple next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException("Not more elements");
+            }
+
+            Tuple ret = page.getTuple(index);
+            // increase index by 1
+            index++;
+            // find next avalible slot.
+            fetchNext();
+            return ret;
+        }
+
+        public void remove() {
+            throw new UnsupportedOperationException("remove() is not supported in HeapPageIterator");
+        }
+    }
 }
 

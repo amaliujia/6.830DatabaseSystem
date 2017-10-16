@@ -1,6 +1,8 @@
 package simpledb;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 import junit.framework.JUnit4TestAdapter;
 
 import org.junit.Test;
@@ -48,7 +50,7 @@ public class TupleTest extends SimpleDbTestBase {
         tup1.setRecordId(rid1);
 
 	try {
-	    assertEquals(rid1, tup1.getRecordId());
+	    assertTrue(rid1.equals(tup1.getRecordId()));
 	} catch (java.lang.UnsupportedOperationException e) {
 		//rethrow the exception with an explanation
     	throw new UnsupportedOperationException("modifyRecordId() test failed due to " +

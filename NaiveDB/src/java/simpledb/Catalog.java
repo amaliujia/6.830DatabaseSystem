@@ -1,5 +1,9 @@
 package simpledb;
 
+import jdk.nashorn.internal.objects.annotations.Getter;
+import jdk.nashorn.internal.objects.annotations.Setter;
+import org.apache.log4j.Logger;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -17,6 +21,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Threadsafe
  */
 public class Catalog {
+    private static Logger LOG = Logger.getLogger(Catalog.class);
+
+    // mapping between a table name and table metadata
+    private TreeMap<Integer, TableMeta> metaTreeMap;
+    private HashMap<String, Integer> nameToTableId;
 
     /**
      * Constructor.
@@ -24,6 +33,8 @@ public class Catalog {
      */
     public Catalog() {
         // some code goes here
+        metaTreeMap = new TreeMap<Integer, TableMeta>();
+        nameToTableId = new HashMap<String, Integer>();
     }
 
     /**
@@ -35,8 +46,13 @@ public class Catalog {
      * conflict exists, use the last table to be added as the table for a given name.
      * @param pkeyField the name of the primary key field
      */
-    public void addTable(DbFile file, String name, String pkeyField) {
+    public synchronized void addTable(DbFile file, String name, String pkeyField) {
         // some code goes here
+        assert (name != null);
+        assert (file != null);
+
+        nameToTableId.put(name, file.getId());
+        metaTreeMap.put(file.getId(), new TableMeta(name, pkeyField, file));
     }
 
     public void addTable(DbFile file, String name) {
@@ -60,7 +76,11 @@ public class Catalog {
      */
     public int getTableId(String name) throws NoSuchElementException {
         // some code goes here
-        return 0;
+        if (!nameToTableId.containsKey(name)) {
+            throw new NoSuchElementException(String.format("%s does not exist in catalog", name));
+        }
+
+        return nameToTableId.get(name);
     }
 
     /**
@@ -71,7 +91,11 @@ public class Catalog {
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if (!metaTreeMap.containsKey(tableid)) {
+            throw new NoSuchElementException(String.format("%d does not exist in catalog", tableid));
+        }
+
+        return metaTreeMap.get(tableid).getFile().getTupleDesc();
     }
 
     /**
@@ -82,27 +106,45 @@ public class Catalog {
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
         // some code goes here
-        return null;
+        if (!metaTreeMap.containsKey(tableid)) {
+            throw new NoSuchElementException(String.format("%d does not exist in catalog", tableid));
+        }
+        return metaTreeMap.get(tableid).getFile();
     }
 
     public String getPrimaryKey(int tableid) {
         // some code goes here
-        return null;
+        if (!metaTreeMap.containsKey(tableid)) {
+            throw new NoSuchElementException(String.format("%d does not exist in catalog", tableid));
+        }
+        return metaTreeMap.get(tableid).getPkeyField();
     }
 
     public Iterator<Integer> tableIdIterator() {
+        return metaTreeMap.keySet().iterator();
+    }
+
+    /**
+     * Returns table name
+     * @param id
+     *          The id of the table, as specified by the DbFile.getId()
+     * @return
+     *          String format table name of id exists in catalog,
+     *          or null of id does not exist in catalog.
+     */
+    public String getTableName(int id) {
         // some code goes here
+        if (metaTreeMap.containsKey(id)) {
+            return metaTreeMap.get(id).getName();
+        }
         return null;
     }
 
-    public String getTableName(int id) {
-        // some code goes here
-        return null;
-    }
-    
     /** Delete all tables from the catalog */
-    public void clear() {
+    public synchronized void clear() {
         // some code goes here
+        metaTreeMap.clear();
+        nameToTableId.clear();
     }
     
     /**
@@ -118,7 +160,9 @@ public class Catalog {
             while ((line = br.readLine()) != null) {
                 //assume line is of the format name (field type, field type, ...)
                 String name = line.substring(0, line.indexOf("(")).trim();
-                //System.out.println("TABLE NAME: " + name);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("TABLE NAME: " + name);
+                }
                 String fields = line.substring(line.indexOf("(") + 1, line.indexOf(")")).trim();
                 String[] els = fields.split(",");
                 ArrayList<String> names = new ArrayList<String>();
@@ -132,14 +176,14 @@ public class Catalog {
                     else if (els2[1].trim().toLowerCase().equals("string"))
                         types.add(Type.STRING_TYPE);
                     else {
-                        System.out.println("Unknown type " + els2[1]);
+                        LOG.error("Unknown type " + els2[1]);
                         System.exit(0);
                     }
                     if (els2.length == 3) {
                         if (els2[2].trim().equals("pk"))
                             primaryKey = els2[0].trim();
                         else {
-                            System.out.println("Unknown annotation " + els2[2]);
+                            LOG.error("Unknown annotation " + els2[2]);
                             System.exit(0);
                         }
                     }
@@ -149,13 +193,13 @@ public class Catalog {
                 TupleDesc t = new TupleDesc(typeAr, namesAr);
                 HeapFile tabHf = new HeapFile(new File(baseFolder+"/"+name + ".dat"), t);
                 addTable(tabHf,name,primaryKey);
-                System.out.println("Added table : " + name + " with schema " + t);
+                LOG.info("Added table : " + name + " with schema " + t);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.error("IO Exception", e);
             System.exit(0);
         } catch (IndexOutOfBoundsException e) {
-            System.out.println ("Invalid catalog entry : " + line);
+            LOG.error("IndexOutOfBoundException", e);
             System.exit(0);
         }
     }

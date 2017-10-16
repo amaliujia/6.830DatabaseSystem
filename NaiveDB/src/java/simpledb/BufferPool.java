@@ -1,8 +1,12 @@
 package simpledb;
 
-import java.io.*;
+import org.apache.log4j.Logger;
 
-import java.util.concurrent.ConcurrentHashMap;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -16,6 +20,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Threadsafe, all fields are final
  */
 public class BufferPool {
+    private static Logger LOG = Logger.getLogger(BufferPool.class);
+
+    private HashMap<Integer, Page> pageMap;
+
+    private Lock transactionLock;
+
     /** Bytes per page, including header. */
     private static final int DEFAULT_PAGE_SIZE = 4096;
 
@@ -33,6 +43,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
+        pageMap = new HashMap<Integer, Page>();
+        transactionLock = new ReentrantLock();
     }
     
     public static int getPageSize() {
@@ -67,7 +79,16 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        transactionLock.lock();
+        try {
+            if (pageMap.containsKey(pid)) {
+                return pageMap.get(pid);
+            } else {
+                throw new DbException("No " + pid + " exists");
+            }
+        } finally {
+            transactionLock.unlock();
+        }
     }
 
     /**
