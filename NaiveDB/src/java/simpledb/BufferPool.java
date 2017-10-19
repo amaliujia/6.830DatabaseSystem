@@ -1,9 +1,12 @@
 package simpledb;
 
+import javafx.util.Pair;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -22,9 +25,7 @@ import java.util.concurrent.locks.ReentrantLock;
 public class BufferPool {
     private static Logger LOG = Logger.getLogger(BufferPool.class);
 
-    private HashMap<Integer, Page> pageMap;
-
-    private Lock transactionLock;
+    private ArrayList<Page> pageBuffer;
 
     /** Bytes per page, including header. */
     private static final int DEFAULT_PAGE_SIZE = 4096;
@@ -43,8 +44,7 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
-        pageMap = new HashMap<Integer, Page>();
-        transactionLock = new ReentrantLock();
+        pageBuffer = new ArrayList<Page>();
     }
     
     public static int getPageSize() {
@@ -76,19 +76,23 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        transactionLock.lock();
-        try {
-            if (pageMap.containsKey(pid)) {
-                return pageMap.get(pid);
-            } else {
-                throw new DbException("No " + pid + " exists");
+        Page ret = null;
+
+        for (Iterator<Page> iterator = pageBuffer.iterator(); iterator.hasNext();) {
+            Page aPage = iterator.next();
+            if (aPage.getId().equals(pid)) {
+                ret = aPage;
+                break;
             }
-        } finally {
-            transactionLock.unlock();
         }
+        if (ret == null) {
+            ret = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+            pageBuffer.add(ret);
+        }
+        return ret;
     }
 
     /**
