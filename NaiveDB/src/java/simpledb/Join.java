@@ -9,6 +9,15 @@ public class Join extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    private OpIterator leftIter;
+    private OpIterator rightIter;
+    private JoinPredicate joinPredicate;
+
+    private Tuple curLeft = null;
+    private Tuple curRight = null;
+    private boolean open = false;
+
+
     /**
      * Constructor. Accepts two children to join and the predicate to join them
      * on
@@ -22,11 +31,14 @@ public class Join extends Operator {
      */
     public Join(JoinPredicate p, OpIterator child1, OpIterator child2) {
         // some code goes here
+        joinPredicate = p;
+        leftIter = child1;
+        rightIter = child2;
     }
 
     public JoinPredicate getJoinPredicate() {
         // some code goes here
-        return null;
+        return joinPredicate;
     }
 
     /**
@@ -36,7 +48,7 @@ public class Join extends Operator {
      * */
     public String getJoinField1Name() {
         // some code goes here
-        return null;
+        return leftIter.getTupleDesc().getFieldName(joinPredicate.getField1());
     }
 
     /**
@@ -46,7 +58,7 @@ public class Join extends Operator {
      * */
     public String getJoinField2Name() {
         // some code goes here
-        return null;
+        return rightIter.getTupleDesc().getFieldName(joinPredicate.getField2());
     }
 
     /**
@@ -55,20 +67,37 @@ public class Join extends Operator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return TupleDesc.merge(leftIter.getTupleDesc(), rightIter.getTupleDesc());
     }
 
     public void open() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         // some code goes here
+        leftIter.open();
+        rightIter.open();
+
+        curLeft = null;
+        curRight = null;
+        super.open();
     }
 
     public void close() {
         // some code goes here
+        leftIter.close();
+        rightIter.close();
+
+        curLeft = null;
+        curRight = null;
+        super.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        leftIter.rewind();
+        rightIter.rewind();
+        curLeft = null;
+        curRight = null;
+
     }
 
     /**
@@ -91,18 +120,64 @@ public class Join extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        // if left child operator returns nothing or right
+        // child operator returns nothing, should return null
+        if ((curLeft == null && !leftIter.hasNext()) ||
+                curRight == null && !rightIter.hasNext()) {
+            return null;
+        }
+
+
+        // if this is the first call, then initialize left tuple.
+        if (curLeft == null && leftIter.hasNext()) {
+            curLeft = leftIter.next();
+        }
+
+        // if this is the first call, then initialize right tuple.
+        if (curRight == null && rightIter.hasNext()) {
+            curRight = rightIter.next();
+        }
+
+        Tuple ret = null;
+        while (true) {
+            if (joinPredicate.filter(curLeft, curRight)) {
+                ret = Tuple.merge(curLeft, curRight);
+            }
+
+            if (rightIter.hasNext()) {
+                curRight = rightIter.next();
+            } else {
+                if (!leftIter.hasNext()) {
+                    curLeft = null;
+                    curRight = null;
+                    break;
+                } else {
+                    rightIter.rewind();
+                    // no need to check if right iterator is empty
+                    // as have checked it at the beginning of function.
+                    curRight = rightIter.next();
+                    curLeft = leftIter.next();
+                }
+            }
+
+            if (ret != null) {
+                break;
+            }
+        }
+        return ret;
     }
 
     @Override
     public OpIterator[] getChildren() {
         // some code goes here
-        return null;
+        return new OpIterator[]{leftIter, rightIter};
     }
 
     @Override
     public void setChildren(OpIterator[] children) {
         // some code goes here
+        leftIter = children[0];
+        rightIter = children[1];
     }
 
 }

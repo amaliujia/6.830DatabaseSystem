@@ -7,6 +7,11 @@ public class IntegerAggregator implements Aggregator {
 
     private static final long serialVersionUID = 1L;
 
+    private int gbField;
+    private Type gbFieldType;
+    private int afield;
+    private Op aggregatorOp;
+
     /**
      * Aggregate constructor
      * 
@@ -24,6 +29,10 @@ public class IntegerAggregator implements Aggregator {
 
     public IntegerAggregator(int gbfield, Type gbfieldtype, int afield, Op what) {
         // some code goes here
+        this.gbField = gbfield;
+        this.gbFieldType = gbfieldtype;
+        this.afield = afield;
+        this.aggregatorOp = what;
     }
 
     /**
