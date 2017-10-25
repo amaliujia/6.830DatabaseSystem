@@ -1,5 +1,8 @@
 package simpledb;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+
 /**
  * Knows how to compute some aggregate over a set of IntFields.
  */
@@ -11,6 +14,9 @@ public class IntegerAggregator implements Aggregator {
     private Type gbFieldType;
     private int afield;
     private Op aggregatorOp;
+
+    private HashMap<Field, Integer> integerAggregator;
+    private HashMap<Field, Integer> counter;
 
     /**
      * Aggregate constructor
@@ -33,6 +39,9 @@ public class IntegerAggregator implements Aggregator {
         this.gbFieldType = gbfieldtype;
         this.afield = afield;
         this.aggregatorOp = what;
+
+        integerAggregator = new HashMap<Field, Integer>();
+        counter = new HashMap<Field, Integer>();
     }
 
     /**
@@ -43,7 +52,61 @@ public class IntegerAggregator implements Aggregator {
      *            the Tuple containing an aggregate field and a group-by field
      */
     public void mergeTupleIntoGroup(Tuple tup) {
-        // some code goes here
+        Field gbKey = tup.getField(this.gbField);
+        Field gbValue = tup.getField(this.afield);
+
+        if (integerAggregator.containsKey(gbKey)) {
+            integerAggregator.put(gbKey, aggreate(gbKey, integerAggregator.get(gbKey), ((IntField)gbValue).getValue(), false));
+        } else {
+            integerAggregator.put(gbKey, aggreate(gbKey,0, ((IntField)gbValue).getValue(), true));
+        }
+    }
+
+    private Integer aggreate(Field gbKey, Integer prevValue, Integer curValue, boolean initFlag) {
+        Integer ret = null;
+        if (initFlag) {
+            switch (this.aggregatorOp){
+                case MIN:
+                case MAX:
+                case SUM:
+                    ret = curValue;
+                    break;
+                case AVG:
+                    ret = curValue;
+                    counter.put(gbKey, 1);
+                    break;
+                case COUNT:
+                    ret = 1;
+                    break;
+                default:
+                    ret = null;
+                    break;
+            }
+        } else {
+            switch (this.aggregatorOp) {
+                case MIN:
+                    if (prevValue > curValue) {
+                        ret = curValue;
+                    }
+                    break;
+                case MAX:
+                    if (prevValue < curValue) {
+                        ret = curValue;
+                    }
+                    break;
+                case SUM:
+                    ret = prevValue + curValue;
+                    break;
+                case AVG:
+                    ret = (curValue + prevValue * counter.get(gbKey)) / (counter.get(gbKey) + 1);
+                    counter.put(gbKey, counter.get(gbKey) + 1);
+                    break;
+                case COUNT:
+                    ret = prevValue;
+                    break;
+            }
+        }
+        return ret;
     }
 
     /**
@@ -56,8 +119,7 @@ public class IntegerAggregator implements Aggregator {
      */
     public OpIterator iterator() {
         // some code goes here
-        throw new
-        UnsupportedOperationException("please implement me for lab2");
+
     }
 
 }
