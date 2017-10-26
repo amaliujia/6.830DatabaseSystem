@@ -5,7 +5,7 @@ import java.io.*;
 /**
  * Interface for values of fields in tuples in SimpleDB.
  */
-public interface Field extends Serializable{
+public interface Field extends Serializable, Comparable{
     /**
      * Write the bytes representing this field to the specified
      * DataOutputStream.
@@ -35,6 +35,7 @@ public interface Field extends Serializable{
      */
     public int hashCode();
     public boolean equals(Object field);
+    public int compareTo(Object field);
 
     public String toString();
 }

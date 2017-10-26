@@ -1,5 +1,6 @@
 package simpledb;
 
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 import java.io.File;
@@ -90,8 +91,13 @@ public class Tuple implements Serializable {
      * where \t is any whitespace (except a newline)
      */
     public String toString() {
-        // some code goes here
-        throw new UnsupportedOperationException("Implement this");
+        StringBuilder column = new StringBuilder();
+        for (Map.Entry<Integer, Field> entry : fieldTreeMap.entrySet()) {
+            column.append(entry.getValue().toString() + "\t");
+        }
+        column.deleteCharAt(column.length() - 1);
+        column.append("\n");
+        return column.toString();
     }
 
     /**

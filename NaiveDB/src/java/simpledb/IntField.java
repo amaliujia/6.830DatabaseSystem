@@ -36,6 +36,17 @@ public class IntField implements Field {
         return ((IntField) field).value == value;
     }
 
+    public int compareTo(Object field) {
+        IntField intField = (IntField)field;
+        if (value < intField.value) {
+            return -1;
+        } else if (value == intField.value) {
+            return 0;
+        } else {
+            return 1;
+        }
+    }
+
     public void serialize(DataOutputStream dos) throws IOException {
         dos.writeInt(value);
     }

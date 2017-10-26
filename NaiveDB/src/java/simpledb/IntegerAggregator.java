@@ -1,7 +1,10 @@
 package simpledb;
 
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.TreeMap;
+import lombok.Getter;
 
 /**
  * Knows how to compute some aggregate over a set of IntFields.
@@ -11,12 +14,14 @@ public class IntegerAggregator implements Aggregator {
     private static final long serialVersionUID = 1L;
 
     private int gbField;
+    @Getter
     private Type gbFieldType;
     private int afield;
     private Op aggregatorOp;
 
-    private HashMap<Field, Integer> integerAggregator;
-    private HashMap<Field, Integer> counter;
+    @Getter
+    private TreeMap<Field, Integer> integerAggregator;
+    private TreeMap<Field, Integer> counter;
 
     /**
      * Aggregate constructor
@@ -40,8 +45,8 @@ public class IntegerAggregator implements Aggregator {
         this.afield = afield;
         this.aggregatorOp = what;
 
-        integerAggregator = new HashMap<Field, Integer>();
-        counter = new HashMap<Field, Integer>();
+        integerAggregator = new TreeMap<Field, Integer>();
+        counter = new TreeMap<Field, Integer>();
     }
 
     /**
@@ -58,7 +63,7 @@ public class IntegerAggregator implements Aggregator {
         if (integerAggregator.containsKey(gbKey)) {
             integerAggregator.put(gbKey, aggreate(gbKey, integerAggregator.get(gbKey), ((IntField)gbValue).getValue(), false));
         } else {
-            integerAggregator.put(gbKey, aggreate(gbKey,0, ((IntField)gbValue).getValue(), true));
+            integerAggregator.put(gbKey, aggreate(gbKey,Integer.MAX_VALUE, ((IntField)gbValue).getValue(), true));
         }
     }
 
@@ -87,11 +92,15 @@ public class IntegerAggregator implements Aggregator {
                 case MIN:
                     if (prevValue > curValue) {
                         ret = curValue;
+                    } else {
+                        ret = prevValue;
                     }
                     break;
                 case MAX:
                     if (prevValue < curValue) {
                         ret = curValue;
+                    } else {
+                        ret = prevValue;
                     }
                     break;
                 case SUM:
@@ -119,7 +128,83 @@ public class IntegerAggregator implements Aggregator {
      */
     public OpIterator iterator() {
         // some code goes here
+        return new IntegerAggregatorIterator(this);
+    }
 
+    private class IntegerAggregatorIterator implements OpIterator {
+        private TreeMap<Field, Integer> integerAggregator;
+        private boolean isOpen;
+        private Tuple nextTuple;
+        private Iterator<Map.Entry<Field, Integer>> keyValueIter;
+
+        private TupleDesc tupleDesc;
+
+
+        public IntegerAggregatorIterator(IntegerAggregator aggregator) {
+            integerAggregator = aggregator.getIntegerAggregator();
+            isOpen = false;
+            nextTuple = null;
+
+            tupleDesc = new TupleDesc(new Type[] {aggregator.getGbFieldType(), Type.INT_TYPE});
+        }
+
+        public void open() throws DbException, TransactionAbortedException {
+            isOpen = true;
+            keyValueIter = integerAggregator.entrySet().iterator();
+        }
+
+        public boolean hasNext() throws DbException, TransactionAbortedException {
+            if (!isOpen) {
+                throw new DbException("Have not opened this iterator");
+            }
+
+            if (nextTuple == null) {
+                nextTuple = fetchNext();
+                if (nextTuple == null) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private Tuple fetchNext() {
+            if (keyValueIter.hasNext()) {
+                Map.Entry<Field, Integer> nextKeyValuePair = keyValueIter.next();
+                Tuple tuple = new Tuple(tupleDesc);
+                tuple.setField(0, nextKeyValuePair.getKey());
+                tuple.setField(1, new IntField(nextKeyValuePair.getValue()));
+                return tuple;
+            } else {
+                return null;
+            }
+        }
+
+        public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
+            if (hasNext()) {
+                Tuple ret = nextTuple;
+                nextTuple = fetchNext();
+                return ret;
+            } else {
+                throw new NoSuchElementException("Next tuple does not exist");
+            }
+
+        }
+
+        public void rewind() throws DbException, TransactionAbortedException {
+            keyValueIter = integerAggregator.entrySet().iterator();
+            nextTuple = null;
+        }
+
+        public TupleDesc getTupleDesc() {
+            return tupleDesc;
+        }
+
+        public void close() {
+            isOpen = false;
+            nextTuple = null;
+            keyValueIter = null;
+        }
     }
 
 }

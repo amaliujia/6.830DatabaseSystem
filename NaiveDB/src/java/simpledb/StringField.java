@@ -45,7 +45,12 @@ public class StringField implements Field {
 		return ((StringField) field).value.equals(value);
 	}
 
-	/**
+    public int compareTo(Object field) {
+        StringField intField = (StringField)field;
+        return value.compareTo(intField.value);
+    }
+
+    /**
 	 * Write this string to dos. Always writes maxSize + 4 bytes to the passed
 	 * in dos. First four bytes are string length, next bytes are string, with
 	 * remainder padded with 0 to maxSize.
