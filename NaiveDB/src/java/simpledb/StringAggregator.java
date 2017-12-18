@@ -17,7 +17,7 @@ public class StringAggregator implements Aggregator {
     private Op aggregatorOp;
 
     @Getter
-    private TreeMap<Field, Set<String>> stringAggregator;
+    private TreeMap<Field, List<String>> stringAggregator;
 
     /**
      * Aggregate constructor
@@ -38,7 +38,7 @@ public class StringAggregator implements Aggregator {
         this.gbFieldType = gbfieldtype;
         this.afield = afield;
         this.aggregatorOp = what;
-        stringAggregator = new TreeMap<Field, Set<String>>();
+        stringAggregator = new TreeMap<Field, List<String>>();
     }
 
     /**
@@ -54,9 +54,9 @@ public class StringAggregator implements Aggregator {
                 if (stringAggregator.containsKey(gbKey)) {
                     stringAggregator.get(gbKey).add(gbValue.getValue());
                 } else {
-                    HashSet<String> set = new HashSet<String>();
-                    set.add(gbValue.getValue());
-                    stringAggregator.put(gbKey, set);
+                    ArrayList<String> arr = new ArrayList<String>();
+                    arr.add(gbValue.getValue());
+                    stringAggregator.put(gbKey, arr);
                 }
                 break;
             default:
@@ -78,10 +78,10 @@ public class StringAggregator implements Aggregator {
     }
 
     private class StringAggregatorIterator implements OpIterator {
-        private TreeMap<Field, Set<String>> stringAggregator;
+        private TreeMap<Field, List<String>> stringAggregator;
         private boolean isOpen;
         private Tuple nextTuple;
-        private Iterator<Map.Entry<Field, Set<String>>> keyValueIter;
+        private Iterator<Map.Entry<Field, List<String>>> keyValueIter;
 
         private TupleDesc tupleDesc;
 
@@ -113,7 +113,7 @@ public class StringAggregator implements Aggregator {
 
         private Tuple fetchNext() {
             if (keyValueIter.hasNext()) {
-                Map.Entry<Field, Set<String>> nextKeyValuePair = keyValueIter.next();
+                Map.Entry<Field, List<String>> nextKeyValuePair = keyValueIter.next();
                 Tuple tuple = new Tuple(tupleDesc);
                 tuple.setField(0, nextKeyValuePair.getKey());
                 tuple.setField(1, new IntField(nextKeyValuePair.getValue().size()));

@@ -15,6 +15,7 @@ public class Aggregate extends Operator {
     private int afield;
     private int gfield;
     private Aggregator.Op aop;
+    private OpIterator agi;
 
     /**
      * Constructor.
@@ -99,15 +100,33 @@ public class Aggregate extends Operator {
      * aggregate. Should return null if there are no more tuples.
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
-	    if (childIter.hasNext()) {
-	        return childIter.next();
-        } else {
-	        return null;
+        if (agi == null) {
+            if (childIter == null) {
+                return null;
+            }
+
+            Aggregator ag;
+            Type gfieldtype = (gfield == Aggregator.NO_GROUPING) ? null : childIter.getTupleDesc().getFieldType(gfield);
+            if (childIter.getTupleDesc().getFieldType(afield).equals(Type.INT_TYPE))
+                ag = new IntegerAggregator(gfield, gfieldtype, afield, aop);
+            else
+                ag = new StringAggregator(gfield, gfieldtype, afield, aop);
+            while (childIter.hasNext())
+                ag.mergeTupleIntoGroup(childIter.next());
+            agi = ag.iterator();
+            agi.open();
+        }
+        if (agi.hasNext()) {
+            return agi.next();
+        }
+        else {
+            return null;
         }
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
 	    childIter.rewind();
+        agi = null;
     }
 
     /**
@@ -127,6 +146,7 @@ public class Aggregate extends Operator {
 
     public void close() {
 	    childIter.close();
+        agi = null;
 	    super.close();
     }
 

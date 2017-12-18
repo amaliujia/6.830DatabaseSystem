@@ -1,8 +1,9 @@
 package simpledb;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import javafx.util.Pair;
+import org.apache.commons.lang3.tuple.MutablePair;
+
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -66,6 +67,11 @@ public class TableStats {
      */
     static final int NUM_HIST_BINS = 100;
 
+    private TreeMap<Integer, IntHistogram> intHistogramTreeMap;
+    private TreeMap<Integer, StringHistogram> stringHistogramTreeMap;
+    private int tableid;
+    private int ioCostPerPage;
+
     /**
      * Create a new TableStats object, that keeps track of statistics on each
      * column of a table
@@ -77,14 +83,77 @@ public class TableStats {
      *            sequential-scan IO and disk seeks.
      */
     public TableStats(int tableid, int ioCostPerPage) {
-        // For this function, you'll have to get the
-        // DbFile for the table in question,
-        // then scan through its tuples and calculate
-        // the values that you need.
-        // You should try to do this reasonably efficiently, but you don't
-        // necessarily have to (for example) do everything
-        // in a single scan of the table.
-        // some code goes here
+        this.tableid = tableid;
+        this.ioCostPerPage = ioCostPerPage;
+
+        intHistogramTreeMap = new TreeMap<>();
+        stringHistogramTreeMap = new TreeMap<>();
+
+        DbFile file = Database.getCatalog().getDatabaseFile(tableid);
+        TupleDesc tupleDesc = file.getTupleDesc();
+        int numFields = tupleDesc.numFields();
+        DbFileIterator iterator = file.iterator(new TransactionId());
+        ArrayList<MutablePair<Integer, Integer>> extrameValues = new ArrayList<>();
+        for (int i = 0; i < numFields; i++) {
+            extrameValues.add(new MutablePair<>(Integer.MAX_VALUE, Integer.MIN_VALUE));
+        }
+
+
+        // first scan to find all extreme values for Int Type.
+        try {
+            while (iterator.hasNext()) {
+                Tuple tuple = iterator.next();
+                for (int i = 0; i < numFields; i++) {
+                    Field field = tuple.getField(i);
+                    if (field.getType() == Type.INT_TYPE) {
+                        IntField f = (IntField)field;
+                        if (f.getValue() < extrameValues.get(i).left) {
+                            extrameValues.get(i).left = f.getValue();
+                        }
+
+                        if (f.getValue() > extrameValues.get(i).right) {
+                            extrameValues.get(i).right = f.getValue();
+                        }
+                    }
+                }
+            }
+        } catch (DbException e) {
+            e.printStackTrace();
+        } catch (TransactionAbortedException e) {
+            e.printStackTrace();
+        }
+
+        // create histogram for all
+        for (int i = 0; i < numFields; i++) {
+            if (tupleDesc.getFieldType(i) == Type.INT_TYPE) {
+                intHistogramTreeMap.put(i, new IntHistogram(NUM_HIST_BINS, extrameValues.get(i).left, extrameValues.get(i).right));
+            } else {
+                stringHistogramTreeMap.put(i, new StringHistogram(NUM_HIST_BINS));
+            }
+        }
+
+        // second scan to add values to histogram
+        try {
+            iterator.rewind();
+            while (iterator.hasNext()) {
+                Tuple tuple = iterator.next();
+                for (int i = 0; i < numFields; i++) {
+                    Field field = tuple.getField(i);
+                    if (field.getType() == Type.INT_TYPE) {
+                        IntField f = (IntField) field;
+                        intHistogramTreeMap.get(i).addValue(f.getValue());
+                    } else {
+                        StringField f = (StringField) field;
+                        stringHistogramTreeMap.get(i).addValue(f.getValue());
+                    }
+                }
+            }
+        } catch (DbException e) {
+            e.printStackTrace();
+        } catch (TransactionAbortedException e) {
+            e.printStackTrace();
+        }
+
     }
 
     /**
@@ -100,8 +169,7 @@ public class TableStats {
      * @return The estimated cost of scanning the table.
      */
     public double estimateScanCost() {
-        // some code goes here
-        return 0;
+        return ((HeapFile)Database.getCatalog().getDatabaseFile(tableid)).numPages() * ioCostPerPage;
     }
 
     /**
@@ -114,7 +182,7 @@ public class TableStats {
      *         selectivityFactor
      */
     public int estimateTableCardinality(double selectivityFactor) {
-        // some code goes here
+
         return 0;
     }
 
@@ -129,7 +197,6 @@ public class TableStats {
      * expected selectivity. You may estimate this value from the histograms.
      * */
     public double avgSelectivity(int field, Predicate.Op op) {
-        // some code goes here
         return 1.0;
     }
 
@@ -147,8 +214,13 @@ public class TableStats {
      *         predicate
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
-        // some code goes here
-        return 1.0;
+        if (intHistogramTreeMap.containsKey(field)) {
+            return intHistogramTreeMap.get(field).estimateSelectivity(op, ((IntField)constant).getValue());
+        } else if (stringHistogramTreeMap.containsKey(field)) {
+            return stringHistogramTreeMap.get(field).estimateSelectivity(op, ((StringField)constant).getValue());
+        } else {
+            return 0.0;
+        }
     }
 
     /**

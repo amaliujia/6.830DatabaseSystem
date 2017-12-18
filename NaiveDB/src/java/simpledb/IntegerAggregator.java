@@ -107,11 +107,11 @@ public class IntegerAggregator implements Aggregator {
                     ret = prevValue + curValue;
                     break;
                 case AVG:
-                    ret = (curValue + prevValue * counter.get(gbKey)) / (counter.get(gbKey) + 1);
+                    ret = prevValue + curValue;
                     counter.put(gbKey, counter.get(gbKey) + 1);
                     break;
                 case COUNT:
-                    ret = prevValue;
+                    ret = prevValue + 1;
                     break;
             }
         }
@@ -173,7 +173,12 @@ public class IntegerAggregator implements Aggregator {
                 Map.Entry<Field, Integer> nextKeyValuePair = keyValueIter.next();
                 Tuple tuple = new Tuple(tupleDesc);
                 tuple.setField(0, nextKeyValuePair.getKey());
-                tuple.setField(1, new IntField(nextKeyValuePair.getValue()));
+                if (aggregatorOp == Op.AVG) {
+                    tuple.setField(1, new IntField(nextKeyValuePair.getValue() / counter.get(nextKeyValuePair.getKey())));
+                } else {
+                    tuple.setField(1, new IntField(nextKeyValuePair.getValue()));
+                }
+
                 return tuple;
             } else {
                 return null;

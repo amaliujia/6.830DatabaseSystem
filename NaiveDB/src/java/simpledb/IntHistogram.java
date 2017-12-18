@@ -1,5 +1,9 @@
 package simpledb;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
+
 /** A class to represent a fixed-width histogram over a single integer-based field.
  */
 public class IntHistogram {
@@ -20,8 +24,37 @@ public class IntHistogram {
      * @param min The minimum integer value that will ever be passed to this class for histogramming
      * @param max The maximum integer value that will ever be passed to this class for histogramming
      */
+    private int minValue;
+    private int maxValue;
+    private int numBuckets;
+    private int numTuples;
+
+    // Use TreeMap to maintain order of keys. TreeMap also provides bounds operations(e.g. lower key, ceiling key, etc.)
+    private TreeMap<Integer, Integer> histograms;
+    private HashMap<Integer, Double> histogramsLen;
+
     public IntHistogram(int buckets, int min, int max) {
-    	// some code goes here
+        minValue = min;
+        maxValue = max;
+        numBuckets = buckets;
+        numTuples = 0;
+
+        int intervalLen = (max - min + 1) / buckets;
+        int extra = (max - min + 1) % buckets;
+        histograms = new TreeMap<>();
+        histogramsLen = new HashMap<>();
+
+        int cur = min;
+        for (int i = 0; i < buckets; i++) {
+            int curLen = intervalLen;
+            if (extra > 0) {
+                curLen += 1;
+                extra--;
+            }
+            histograms.putIfAbsent(cur + curLen - 1, 0);
+            histogramsLen.putIfAbsent(cur + curLen - 1, curLen * 1.0);
+            cur = cur + curLen;
+        }
     }
 
     /**
@@ -29,7 +62,9 @@ public class IntHistogram {
      * @param v Value to add to the histogram
      */
     public void addValue(int v) {
-    	// some code goes here
+        numTuples++;
+        Integer k = histograms.ceilingKey(v);
+        histograms.put(k, histograms.get(k) + 1);
     }
 
     /**
@@ -43,9 +78,99 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
+        if (op == op.EQUALS) {
+            if (v < minValue || v > maxValue) {
+                return 0;
+            }
+            Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
+            return (1 / histogramsLen.get(e.getKey())) * e.getValue() / numTuples;
+        } else if (op == op.GREATER_THAN) {
+            Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
+            Double[] ret = {0.0};
+            histograms.forEach(
+                    (k, value) -> {
+                        if (e != null && k == e.getKey() && v != k) {
+                            ret[0] += (k - v) / histogramsLen.get(k) * value;
+                        } else if (e != null && k == e.getKey() && v == k) {
+                            ret[0] += 0;
+                        } else if (v < k) {
+                            ret[0] += value;
+                        }
+            }
+            );
+            return ret[0] / numTuples;
+        } else if (op == op.GREATER_THAN_OR_EQ) {
+            Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
+            Double[] ret = {0.0};
+            histograms.forEach(
+                    (k, value) -> {
+                        if (e != null && k == e.getKey()) {
+                            ret[0] += (k - v + 1) / histogramsLen.get(k) * value;
+                        } else if (v < k) {
+                            ret[0] += value;
+                        }
+                    }
+            );
+            return ret[0] / numTuples;
+        } else if (op == op.LESS_THAN) {
+            // need to check if v is smaller than minValue
+            // because we only save right boundary of our
+            // histogram.
+            if (v < minValue) {
+                return 0;
+            }
 
-    	// some code goes here
-        return -1.0;
+            Integer ceilingKey = histograms.ceilingKey(v);
+            if (ceilingKey == null) {
+                // no ceilingKey means that v is greater than
+                // maxValue.
+                return 1.0;
+            }
+            Double[] ret = {0.0};
+            histograms.forEach (
+                    (k, value) -> {
+                        if (ceilingKey == k) {
+                            ret[0] += (histogramsLen.get(k) - (k - v + 1)) / histogramsLen.get(k) * value;
+                        } else if (k < v) {
+                            ret[0] += value;
+                        }
+                    }
+            );
+            return ret[0] / numTuples;
+        } else if (op == op.LESS_THAN_OR_EQ) {
+            // need to check if v is smaller than minValue
+            // because we only save right boundary of our
+            // histogram.
+            if (v < minValue) {
+                return 0;
+            }
+
+            Integer ceilingKey = histograms.ceilingKey(v);
+            if (ceilingKey == null) {
+                // no ceilingKey means that v is greater than
+                // maxValue.
+                return 1.0;
+            }
+            Double[] ret = {0.0};
+            histograms.forEach (
+                    (k, value) -> {
+                        if (ceilingKey == k) {
+                            ret[0] += (histogramsLen.get(k) - (k - v)) / histogramsLen.get(k) * value;
+                        } else if (k < v) {
+                            ret[0] += value;
+                        }
+                    }
+            );
+            return ret[0] / numTuples;
+        } else if (op == op.NOT_EQUALS) {
+            if (v < minValue || v > maxValue) {
+                return 1;
+            }
+            Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
+            return 1 - (1 / histogramsLen.get(e.getKey())) * e.getValue() / numTuples;
+        } else {
+            return -1;
+        }
     }
     
     /**
@@ -66,7 +191,14 @@ public class IntHistogram {
      * @return A string describing this histogram, for debugging purposes
      */
     public String toString() {
-        // some code goes here
-        return null;
+        StringBuffer buffer = new StringBuffer();
+        buffer.append("buckets: " + this.numBuckets + " # ");
+        buffer.append("min: " + this.minValue + " # ");
+        buffer.append("max: " + this.maxValue + " # ");
+        int i = 0;
+        for (Map.Entry<Integer, Integer> e : this.histograms.entrySet()) {
+            buffer.append(i + "th key: " + e.getKey() + " value " + e.getValue());
+        }
+        return buffer.toString();
     }
 }
