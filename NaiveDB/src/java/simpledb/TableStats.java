@@ -101,6 +101,7 @@ public class TableStats {
 
         // first scan to find all extreme values for Int Type.
         try {
+            iterator.open();
             while (iterator.hasNext()) {
                 Tuple tuple = iterator.next();
                 for (int i = 0; i < numFields; i++) {
@@ -183,7 +184,16 @@ public class TableStats {
      */
     public int estimateTableCardinality(double selectivityFactor) {
 
-        return 0;
+        return (int)(getNumberTupleInTable() * selectivityFactor);
+    }
+
+    private int getNumberTupleInTable() {
+        if (intHistogramTreeMap.size() > 0) {
+            IntHistogram intHistogram = intHistogramTreeMap.values().iterator().next();
+            return intHistogram.getNumTuples();
+        } else {
+            return 0;
+        }
     }
 
     /**

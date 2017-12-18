@@ -57,6 +57,10 @@ public class IntHistogram {
         }
     }
 
+    public int getNumTuples() {
+        return numTuples;
+    }
+
     /**
      * Add a value to the set of values that you are keeping a histogram of.
      * @param v Value to add to the histogram
@@ -85,10 +89,14 @@ public class IntHistogram {
             Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
             return (1 / histogramsLen.get(e.getKey())) * e.getValue() / numTuples;
         } else if (op == op.GREATER_THAN) {
-            Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
+            if (v < minValue) {
+                return 1.0;
+            }
+
             Double[] ret = {0.0};
             histograms.forEach(
                     (k, value) -> {
+                        Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
                         if (e != null && k == e.getKey() && v != k) {
                             ret[0] += (k - v) / histogramsLen.get(k) * value;
                         } else if (e != null && k == e.getKey() && v == k) {
@@ -100,10 +108,13 @@ public class IntHistogram {
             );
             return ret[0] / numTuples;
         } else if (op == op.GREATER_THAN_OR_EQ) {
-            Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
+            if (v < minValue) {
+                return 1.0;
+            }
             Double[] ret = {0.0};
             histograms.forEach(
                     (k, value) -> {
+                        Map.Entry<Integer, Integer> e = histograms.ceilingEntry(v);
                         if (e != null && k == e.getKey()) {
                             ret[0] += (k - v + 1) / histogramsLen.get(k) * value;
                         } else if (v < k) {
