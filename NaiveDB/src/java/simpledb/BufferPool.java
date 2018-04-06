@@ -1,14 +1,12 @@
 package simpledb;
 
-import javafx.util.Pair;
+import com.google.common.collect.HashBasedTable;
+import com.google.common.collect.Table;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.*;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
 /**
@@ -37,6 +35,10 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
+    private Object lock;
+    private HashMap<PageId, ReentrantReadWriteLock> pageLocks;
+    private Table<TransactionId, PageId, Permissions> trsPagePerms;
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -44,7 +46,10 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
-        pageBuffer = new ArrayList<Page>();
+        pageBuffer = new ArrayList<>();
+        pageLocks = new HashMap<>();
+        trsPagePerms = HashBasedTable.create();
+        lock = new Object();
     }
     
     public static int getPageSize() {
@@ -78,8 +83,27 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        // some code goes here
         Page ret = null;
+
+        // only allow one thread to access page locks at a time
+        // to add new locks to pages.
+        synchronized (lock) {
+            if (!pageLocks.containsKey(pid)) {
+                pageLocks.put(pid, new ReentrantReadWriteLock());
+            }
+        }
+
+        if(trsPagePerms.contains(tid, pid)) {
+            releasePage(tid, pid);
+        }
+
+        if (perm == Permissions.READ_ONLY) {
+            pageLocks.get(pid).readLock().lock();
+        } else {
+            pageLocks.get(pid).writeLock().lock();
+        }
+        trsPagePerms.put(tid, pid, perm);
+
 
         for (Iterator<Page> iterator = pageBuffer.iterator(); iterator.hasNext();) {
             Page aPage = iterator.next();
@@ -92,6 +116,7 @@ public class BufferPool {
             ret = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
             pageBuffer.add(ret);
         }
+
         return ret;
     }
 
@@ -105,8 +130,14 @@ public class BufferPool {
      * @param pid the ID of the page to unlock
      */
     public  void releasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        if (trsPagePerms.get(tid, pid) == Permissions.READ_ONLY)
+            pageLocks.get(pid).readLock().unlock();
+        else
+            pageLocks.get(pid).writeLock().unlock();
+
+        synchronized (lock) {
+            trsPagePerms.remove(tid, pid);
+        }
     }
 
     /**
@@ -115,15 +146,21 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+        Map<PageId, Permissions> pageToPerms = trsPagePerms.row(tid);
+        Iterator<Map.Entry<PageId, Permissions>> iter = pageToPerms.entrySet().iterator();
+        while (iter.hasNext()) {
+            Map.Entry<PageId, Permissions> entry = iter.next();
+            if (entry.getValue() == Permissions.READ_ONLY) {
+                pageLocks.get(entry.getKey()).readLock().unlock();
+            } else {
+                pageLocks.get(entry.getKey()).writeLock().unlock();
+            }
+        }
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        return false;
+        return trsPagePerms.contains(tid, p);
     }
 
     /**
@@ -135,8 +172,7 @@ public class BufferPool {
      */
     public void transactionComplete(TransactionId tid, boolean commit)
         throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+
     }
 
     /**
@@ -156,8 +192,11 @@ public class BufferPool {
      */
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+        DbFile file = Database.getCatalog().getDatabaseFile(tableId);
+        ArrayList<Page> pages = file.insertTuple(tid, t);
+        for (Page page : pages) {
+            page.markDirty(true, tid);
+        }
     }
 
     /**
@@ -175,8 +214,11 @@ public class BufferPool {
      */
     public  void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+        DbFile file = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
+        ArrayList<Page> pages = file.deleteTuple(tid, t);
+        for (Page page : pages) {
+            page.markDirty(true, tid);
+        }
     }
 
     /**
@@ -207,14 +249,14 @@ public class BufferPool {
      * Flushes a certain page to disk
      * @param pid an ID indicating the page to flush
      */
-    private synchronized  void flushPage(PageId pid) throws IOException {
+    private synchronized void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
     }
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
     }
@@ -223,7 +265,7 @@ public class BufferPool {
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
+    private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
     }

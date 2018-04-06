@@ -20,6 +20,14 @@ public class Permissions {
     return "UNKNOWN";
   }
 
+  public int getPermLevel() {
+    return permLevel;
+  }
+
+  public boolean equals(Permissions other) {
+    return other.getPermLevel() == permLevel;
+  }
+
   public static final Permissions READ_ONLY = new Permissions(0);
   public static final Permissions READ_WRITE = new Permissions(1);
 
